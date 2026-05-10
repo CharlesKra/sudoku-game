@@ -1,0 +1,13 @@
+{
+  "name": "sudoku-game",
+  "version": "1.0.0",
+  "description": "Full-stack Sudoku game with Express backend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3"
+  }
+}
