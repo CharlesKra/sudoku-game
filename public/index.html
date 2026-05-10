@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sudoku</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:2rem 1rem;background:#1a1a2e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#eee;}
+    h1{font-size:2.2rem;color:#e94560;letter-spacing:6px;text-transform:uppercase;margin-bottom:0.3rem;}
+    .subtitle{color:#555;font-size:0.85rem;margin-bottom:1.5rem;}
+    .top{display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap;justify-content:center;}
+    .left{display:flex;flex-direction:column;align-items:center;}
+    .controls{display:flex;gap:0.6rem;margin-bottom:1rem;flex-wrap:wrap;justify-content:center;}
+    button{padding:0.45rem 1rem;border:none;border-radius:8px;background:#e94560;color:white;font-size:0.85rem;cursor:pointer;transition:all 0.2s;}
+    button:hover{opacity:0.85;transform:translateY(-1px);}
+    button.sec{background:#16213e;border:1px solid #e94560;}
+    button.active{background:#c73652;}
+    #info{display:flex;gap:1.5rem;margin-bottom:0.8rem;font-size:0.9rem;}
+    #timer{color:#e94560;font-weight:600;}
+    #hints-left{color:#4fc3f7;}
+    #board{display:grid;grid-template-columns:repeat(9,1fr);gap:2px;background:#e94560;border:3px solid #e94560;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(233,69,96,0.3);}
+    .cell{width:54px;height:54px;background:#16213e;display:flex;align-items:center;justify-content:center;font-size:1.3rem;cursor:pointer;transition:background 0.12s;user-select:none;}
+    .cell:nth-child(3n){border-right:2px solid #e94560;}.cell:nth-child(9n){border-right:none;}
+    .rs{border-bottom:2px solid #e94560;}
+    .cell.given{color:#eee;font-weight:700;}
+    .cell.user{color:#4fc3f7;}
+    .cell.sel{background:#0f3460;}
+    .cell.hl{background:#1a2a4a;}
+    .cell.err{color:#e94560!important;}
+    .cell.hint-cell{color:#66bb6a!important;font-weight:700;}
+    #numpad{display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem;margin-top:1rem;}
+    .nb{width:50px;height:50px;border-radius:50%;background:#16213e;border:1px solid #e94560;color:#eee;font-size:1.2rem;cursor:pointer;transition:background 0.15s;}
+    .nb:hover{background:#e94560;}
+    #status{margin-top:0.8rem;font-size:1rem;color:#aaa;min-height:1.5rem;text-align:center;}
+    .right{display:flex;flex-direction:column;gap:1rem;min-width:220px;}
+    .panel{background:#16213e;border:1px solid #2a2a4a;border-radius:10px;padding:1rem;}
+    .panel h3{color:#e94560;font-size:0.85rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:0.8rem;}
+    .lb-entry{display:flex;justify-content:space-between;font-size:0.8rem;padding:0.3rem 0;border-bottom:1px solid #1a1a3e;color:#aaa;}
+    .lb-entry span.name{color:#eee;font-weight:600;}
+    .lb-entry span.diff{color:#e94560;font-size:0.7rem;}
+    #name-input{width:100%;padding:0.4rem 0.6rem;background:#1a1a2e;border:1px solid #e94560;border-radius:6px;color:#eee;font-size:0.85rem;margin-bottom:0.5rem;}
+    #name-input::placeholder{color:#555;}
+    .progress-bar{height:4px;background:#1a1a2e;border-radius:2px;margin-top:0.5rem;overflow:hidden;}
+    .progress-fill{height:100%;background:linear-gradient(90deg,#e94560,#4fc3f7);border-radius:2px;transition:width 0.3s;}
+    #progress-label{font-size:0.75rem;color:#555;margin-top:0.3rem;}
+  </style>
+</head>
+<body>
+  <h1>Sudoku</h1>
+  <p class="subtitle">Powered by Express API</p>
+  <div class="top">
+    <div class="left">
+      <div class="controls">
+        <button onclick="startGame('easy')" id="btn-easy">Easy</button>
+        <button onclick="startGame('medium')" id="btn-medium" class="active">Medium</button>
+        <button onclick="startGame('hard')" id="btn-hard">Hard</button>
+        <button class="sec" onclick="getHint()">Hint</button>
+        <button class="sec" onclick="validateBoard()">Check</button>
+      </div>
+      <div id="info">
+        <span id="timer">00:00</span>
+        <span id="hints-left">3 hints left</span>
+        <span id="filled">0/81</span>
+      </div>
+      <div id="board"></div>
+      <div id="numpad"></div>
+      <div id="status"></div>
+    </div>
+    <div class="right">
+      <div class="panel">
+        <h3>Progress</h3>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        <div id="progress-label">0 of 81 cells filled</div>
+      </div>
+      <div class="panel">
+        <h3>Leaderboard</h3>
+        <div id="leaderboard-list"><div style="color:#555;font-size:0.8rem">Loading...</div></div>
+      </div>
+      <div class="panel" id="submit-panel" style="display:none">
+        <h3>You Won!</h3>
+        <input id="name-input" placeholder="Your name" maxlength="20">
+        <button onclick="submitScore()" style="width:100%">Submit Score</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    let puzzle=[],solution=[],given=[],board=[],selected=null;
+    let seconds=0,timerInterval=null,hints=3,difficulty='medium',solved=false;
+    let errors=[],hintCells=new Set();
+    function pad(n){return String(n).padStart(2,'0');}
+    function fmt(s){return pad(Math.floor(s/60))+':'+pad(s%60);}
+    function startTimer(){clearInterval(timerInterval);seconds=0;timerInterval=setInterval(()=>{seconds++;document.getElementById('timer').textContent=fmt(seconds);},1000);}
+    async function startGame(diff){
+      difficulty=diff;solved=false;hints=3;errors=[];hintCells=new Set();
+      ['easy','medium','hard'].forEach(d=>document.getElementById('btn-'+d).classList.toggle('active',d===diff));
+      document.getElementById('status').textContent='Loading...';
+      document.getElementById('submit-panel').style.display='none';
+      document.getElementById('hints-left').textContent='3 hints left';
+      const res=await fetch('/api/puzzle?difficulty='+diff);
+      const data=await res.json();
+      puzzle=data.puzzle;solution=data.solution;
+      board=puzzle.map(r=>[...r]);
+      given=puzzle.map(r=>r.map(v=>v!==0));
+      selected=null;
+      document.getElementById('status').textContent='';
+      startTimer();render();updateProgress();loadLeaderboard();
+    }
+    function render(){
+      const el=document.getElementById('board');el.innerHTML='';
+      for(let r=0;r<9;r++)for(let c=0;c<9;c++){
+        const cell=document.createElement('div');cell.className='cell';
+        if(given[r][c])cell.classList.add('given');
+        else if(board[r][c]!==0){
+          cell.classList.add('user');
+          if(errors.some(e=>e.row===r&&e.col===c))cell.classList.add('err');
+          if(hintCells.has(r+','+c))cell.classList.add('hint-cell');
+        }
+        if(r===2||r===5)cell.classList.add('rs');
+        if(selected&&selected[0]===r&&selected[1]===c)cell.classList.add('sel');
+        else if(selected&&(selected[0]===r||selected[1]===c||(Math.floor(selected[0]/3)===Math.floor(r/3)&&Math.floor(selected[1]/3)===Math.floor(c/3))))cell.classList.add('hl');
+        cell.textContent=board[r][c]||'';
+        cell.onclick=()=>{selected=[r,c];render();};
+        el.appendChild(cell);
+      }
+    }
+    function inputNum(n){
+      if(!selected||solved)return;
+      const[r,c]=selected;if(given[r][c])return;
+      board[r][c]=n;errors=errors.filter(e=>!(e.row===r&&e.col===c));
+      render();updateProgress();
+    }
+    function updateProgress(){
+      const filled=board.flat().filter(v=>v!==0).length;
+      const pct=Math.round(filled/81*100);
+      document.getElementById('progress-fill').style.width=pct+'%';
+      document.getElementById('progress-label').textContent=filled+' of 81 cells filled';
+      document.getElementById('filled').textContent=filled+'/81';
+    }
+    async function validateBoard(){
+      const res=await fetch('/api/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({board,solution})});
+      const data=await res.json();
+      errors=data.errors;render();
+      if(data.solved){
+        clearInterval(timerInterval);solved=true;
+        document.getElementById('status').textContent='Solved in '+fmt(seconds)+'!';
+        document.getElementById('submit-panel').style.display='block';
+      } else if(data.errors.length>0){
+        document.getElementById('status').textContent=data.errors.length+' error(s) found';
+      } else {
+        document.getElementById('status').textContent='Looking good so far!';
+      }
+    }
+    async function getHint(){
+      if(hints<=0){document.getElementById('status').textContent='No hints left!';return;}
+      if(solved)return;
+      const res=await fetch('/api/hint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({board,solution})});
+      const data=await res.json();
+      if(data.hint){
+        const{row,col,value}=data.hint;
+        board[row][col]=value;hintCells.add(row+','+col);
+        hints--;document.getElementById('hints-left').textContent=hints+' hint'+(hints!==1?'s':'')+' left';
+        render();updateProgress();
+      }
+    }
+    async function loadLeaderboard(){
+      const res=await fetch('/api/leaderboard');const data=await res.json();
+      const el=document.getElementById('leaderboard-list');
+      if(data.length===0){el.innerHTML='<div style="color:#555;font-size:0.8rem">No scores yet</div>';return;}
+      el.innerHTML=data.map((e,i)=>`<div class="lb-entry"><span class="name">${i+1}. ${e.name}</span><span class="diff">${e.difficulty}</span><span>${fmt(e.time)}</span></div>`).join('');
+    }
+    async function submitScore(){
+      const name=document.getElementById('name-input').value.trim();if(!name)return;
+      await fetch('/api/leaderboard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,time:seconds,difficulty})});
+      document.getElementById('submit-panel').style.display='none';loadLeaderboard();
+    }
+    const np=document.getElementById('numpad');
+    for(let n=1;n<=9;n++){const b=document.createElement('button');b.className='nb';b.textContent=n;b.onclick=()=>inputNum(n);np.appendChild(b);}
+    const er=document.createElement('button');er.className='nb';er.textContent='X';er.onclick=()=>inputNum(0);np.appendChild(er);
+    document.addEventListener('keydown',e=>{
+      if(e.key>='1'&&e.key<='9')inputNum(parseInt(e.key));
+      if(e.key==='Backspace'||e.key==='Delete')inputNum(0);
+      if(selected){const[r,c]=selected;
+        if(e.key==='ArrowUp'&&r>0)selected=[r-1,c];if(e.key==='ArrowDown'&&r<8)selected=[r+1,c];
+        if(e.key==='ArrowLeft'&&c>0)selected=[r,c-1];if(e.key==='ArrowRight'&&c<8)selected=[r,c+1];
+        render();}
+    });
+    startGame('medium');
+  </script>
+</body>
+</html>
